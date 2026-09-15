@@ -1,14 +1,14 @@
 #!/bin/bash
 # Description: OpenWrt DIY script part 2 (After Update feeds)
 
-# 1. 修改默认后台登录 IP 为 192.168.2.1
+# 1. 修改默认管理后台 IP 为 192.168.2.1
 sed -i 's/192.168.1.1/192.168.2.1/g' package/base-files/files/bin/config_generate
 
-# 2. 直接拉取经典版 PassWall 前端源码（避开 feeds 索引缺失 bug）
+# 2. 直接将经典版 PassWall 前端源码拉取到 package 目录，避开 feed 索引查找报错
 rm -rf package/luci-app-passwall
 git clone --depth=1 https://github.com/xiaorouji/openwrt-passwall.git package/luci-app-passwall
 
-# 3. 物理删除不需要的冗余插件目录（保留 autoreboot，其余彻底剔除）
+# 3. 物理移除冗余插件目录，防止被默认依赖拉取编译
 rm -rf feeds/luci/applications/luci-app-vsftpd
 rm -rf feeds/luci/applications/luci-app-vlmcsd
 rm -rf feeds/luci/applications/luci-app-upnp
@@ -17,7 +17,7 @@ rm -rf feeds/packages/net/vsftpd
 rm -rf feeds/packages/net/vlmcsd
 rm -rf feeds/packages/net/miniupnpd
 
-# 4. 设置默认主题为 Argon
+# 4. 设定默认主题为 Argon
 sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile
 
 # 5. 预置最新的 v2ray-rules-dat 规则库
