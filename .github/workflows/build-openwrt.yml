@@ -1,7 +1,6 @@
 name: Build OpenWrt for AX3000T
 
-# 关键：这行会让 Actions 运行列表的标题直接变成你的修改提交内容
-run-name: ${{ github.event.head_commit.message || format('手动触发: {0}', github.event.inputs.description || '编译 AX3000T') }}
+run-name: ${{ github.event.head_commit.message || github.event.inputs.description || '编译 AX3000T 固件' }}
 
 on:
   push:
@@ -15,7 +14,6 @@ on:
         description: '本次编译说明 / 修改内容'
         required: false
         default: '常规精简构建'
-
 
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
@@ -95,13 +93,8 @@ jobs:
 
     - name: Load custom configuration
       run: |
-        # 如果存在自定义 files 目录，拷贝进源码（支持软链接与覆盖）
         [ -d files ] && mv files openwrt/files
-
-        # 载入自定义 .config 配置文件
         [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
-
-        # 赋予自定义脚本执行权限并运行
         chmod +x $DIY_P2_SH 2>/dev/null || true
         cd openwrt
         [ -f $GITHUB_WORKSPACE/$DIY_P2_SH ] && $GITHUB_WORKSPACE/$DIY_P2_SH
