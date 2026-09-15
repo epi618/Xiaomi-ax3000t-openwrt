@@ -1,13 +1,22 @@
-name: Build ImmortalWrt for Xiaomi AX3000T (ITB)
+name: Build OpenWrt for AX3000T
+
+run-name: ${{ github.event.head_commit.message || github.event.inputs.description || '编译 AX3000T 固件' }}
 
 on:
+  push:
+    paths:
+      - '.config'
+      - 'diy-part*.sh'
+      - '.github/workflows/**'
   workflow_dispatch:
-  # push:
-  #   branches: [ "master", "main" ]
+    inputs:
+      description:
+        description: '本次编译说明 / 修改内容'
+        required: false
+        default: '常规精简构建'
 
 env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
-  # 切换为最新主干分支（master）或最新的稳定大版本（openwrt-24.10）
   REPO_BRANCH: master
   CONFIG_FILE: .config
   DIY_P1_SH: diy-part1.sh
@@ -22,100 +31,101 @@ jobs:
     runs-on: ubuntu-22.04
 
     steps:
-    - name: Checkout Source Code
+    - name: Free Disk Space
+      uses: jlumbroso/free-disk-space@main
+      with:
+        tool-cache: false
+        android: true
+        dotnet: true
+        haskell: true
+        large-packages: true
+        docker-images: true
+        swap-storage: true
+
+    - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Initialize Build Environment
+    - name: Initialization environment
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
-        sudo rm -rf /etc/apt/sources.list.d/* /usr/share/dotnet /usr/local/lib/android /opt/ghc
-        sudo apt-get -qq update
-        sudo apt-get -qq install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-          bzip2 ccache cmake cpio curl device-tree-compiler fastjar flex gawk gettext gcc-multilib g++-multilib \
-          git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libglib2.0-dev libgmp3-dev libltdl-dev \
-          libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libreadline-dev libssl-dev libtool lrzsz \
-          mkisofs msmtp nano ninja-build p7zip p7zip-full patch pkgconf python3 python3-pyelftools \
-          libpython3-dev qemu-utils rsync scons squashfs-tools subversion swig texinfo uglifyjs upx-ucl unzip \
-          vim wget xmlto xxd zlib1g-dev u-boot-tools
+        sudo -E apt-get -qq update
+        sudo -E apt-get -qq install ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
+        bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext \
+        genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev \
+        libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev \
+        libreadline-dev libssl-dev libtool llvm lrzsz libnsl-dev ninja-build p7zip p7zip-full patch pkgconf \
+        python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion \
+        swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
+
+        sudo -E apt-get -qq autoremove --purge
+        sudo -E apt-get -qq clean
         sudo timedatectl set-timezone "$TZ"
-        sudo mkdir -p /workdir
-        sudo chown $USER:$USER /workdir
+        sudo chown $USER:$GROUPS $GITHUB_WORKSPACE
 
-    - name: Clone ImmortalWrt Source
-      working-directory: /workdir
+    - name: Clone source code
       run: |
-        df -h
-        git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
-        ln -sf /workdir/openwrt $GITHUB_WORKSPACE/openwrt
+        git clone --depth=1 $REPO_URL -b $REPO_BRANCH openwrt
 
-    - name: Load Custom Feeds (DIY-Part1)
+    - name: Load custom feeds
       run: |
-        [ -e $DIY_P1_SH ] && chmod +x $DIY_P1_SH && ./$DIY_P1_SH
+        chmod +x $DIY_P1_SH 2>/dev/null || true
+        cd openwrt
+        [ -f $GITHUB_WORKSPACE/$DIY_P1_SH ] && $GITHUB_WORKSPACE/$DIY_P1_SH
+
+    - name: Update feeds
+      run: |
         cd openwrt
         ./scripts/feeds update -a
+
+    - name: Install feeds
+      run: |
+        cd openwrt
         ./scripts/feeds install -a
 
-    - name: Load Custom Configuration and DIY-Part2
+    - name: Install Argon theme
       run: |
-        [ -e $CONFIG_FILE ] && cp $CONFIG_FILE openwrt/.config
-        [ -e $DIY_P2_SH ] && chmod +x $DIY_P2_SH && ./$DIY_P2_SH
+        cd openwrt/package
+        rm -rf luci-theme-argon
+        git clone -b master https://github.com/jerrykuku/luci-theme-argon.git luci-theme-argon
+
+    - name: Load custom configuration
+      run: |
+        [ -d files ] && mv files openwrt/files
+        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+        chmod +x $DIY_P2_SH 2>/dev/null || true
+        cd openwrt
+        [ -f $GITHUB_WORKSPACE/$DIY_P2_SH ] && $GITHUB_WORKSPACE/$DIY_P2_SH
+
+    - name: Download package
+      id: package
+      run: |
         cd openwrt
         make defconfig
-
-    - name: Download Package Dependencies
-      working-directory: /workdir/openwrt
-      run: |
-        make download -j$(nproc)
-        find dl -size -1024c -exec ls -l {} \;
+        make download -j$(nproc) || make download -j1 V=s
         find dl -size -1024c -exec rm -f {} \;
 
-    - name: Compile the Firmware
+    - name: Compile the firmware
       id: compile
-      working-directory: /workdir/openwrt
       run: |
+        cd openwrt
         echo -e "$(nproc) thread compile"
         make -j$(nproc) || make -j1 V=s
         echo "status=success" >> $GITHUB_OUTPUT
+        echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
-    - name: Organize Compiled Files
+    - name: Organize files
       id: organize
       if: steps.compile.outputs.status == 'success' && !cancelled()
       run: |
-        cd /workdir/openwrt/bin/targets/mediatek/filogic
+        cd openwrt/bin/targets/*/*
         rm -rf packages
         echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "STR_DATE=$(date +"%Y%m%d_%H%M")" >> $GITHUB_ENV
         echo "status=success" >> $GITHUB_OUTPUT
 
-    - name: Upload Firmware to Artifacts
+    - name: Upload firmware directory
       uses: actions/upload-artifact@v4
       if: steps.organize.outputs.status == 'success' && !cancelled()
       with:
-        name: ImmortalWrt_AX3000T_${{ env.STR_DATE }}
-        path: |
-          ${{ env.FIRMWARE }}/*.itb
-          ${{ env.FIRMWARE }}/*.bin
-          ${{ env.FIRMWARE }}/*.buildinfo
-          ${{ env.FIRMWARE }}/*.manifest
-          ${{ env.FIRMWARE }}/sha256sums
-
-    - name: Create GitHub Release
-      uses: softprops/action-gh-release@v2
-      if: steps.organize.outputs.status == 'success' && !cancelled()
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-      with:
-        tag_name: ImmortalWrt_AX3000T_${{ env.STR_DATE }}
-        body: |
-          ### Xiaomi Router AX3000T (ImmortalWrt OpenWrt-23.05)
-          - 采用联发科 Filogic 官方大分区架构
-          - 包含 `*-initramfs-recovery.itb` 内存恢复镜像
-          - 包含 `*-sysupgrade.itb` 系统升级镜像
-          - 内置 PassWall / Xray-core / Argon 主题
-        files: |
-          ${{ env.FIRMWARE }}/*.itb
-          ${{ env.FIRMWARE }}/*.bin
-          ${{ env.FIRMWARE }}/*.buildinfo
-          ${{ env.FIRMWARE }}/*.manifest
-          ${{ env.FIRMWARE }}/sha256sums
+        name: OpenWrt_firmware_AX3000T${{ env.FILE_DATE }}
+        path: ${{ env.FIRMWARE }}
