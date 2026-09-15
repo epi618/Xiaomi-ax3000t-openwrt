@@ -15,3 +15,7 @@ rm -rf feeds/packages/net/miniupnpd
 
 # 3. 设置默认主题为 Argon
 sed -i 's/luci-theme-bootstrap/luci-theme-argon/g' feeds/luci/collections/luci/Makefile
+
+# 预置最新的 v2ray-rules-dat 规则库
+curl -sSL https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geoip.dat -o package/base-files/files/usr/share/v2ray/geoip.dat 2>/dev/null || true
+curl -sSL https://github.com/Loyalsoldier/v2ray-rules-dat/releases/latest/download/geosite.dat -o package/base-files/files/usr/share/v2ray/geosite.dat 2>/dev/null || true
