@@ -1,137 +1,79 @@
-# 适用于小米ax3000t的云编译openwrt固件及刷入教程和刷回官方教程
+# 适用于小米 AX3000T 的 OpenWrt 纯净轻量定制固件
 
-## 注意：[Releases](https://github.com/zc360/Xiaomi-ax3000t-openwrt/releases)里的固件可能仅适用于ax3000t v1版本路由器，v2版刷[Releases](https://github.com/zc360/Xiaomi-ax3000t-openwrt/releases)里的固件或我所提供的uboot可能会变砖！
+> **重要警示**：  
+> 本仓库及 Releases 固件专用于 **小米 AX3000T v1 版本（联发科 MT7981 芯片）**。请勿在 v2 硬件版本上强刷本固件或刷入不匹配的 U-Boot，否则极易导致硬件损坏（变砖）！  
+> 阅读本文档时**请勿使用浏览器自带的网页翻译功能**，以避免 Markdown 排版被破坏。
 
-**可以通过修改.config文件及diy-part1.sh文件自定义编译固件**
+---
 
-此仓库是可以编译出任何支持的机型和任何自定义配置的固件
+## 一、 固件特色与定制说明
 
-如果需要添加一些lede默认没有的插件可以通过修改工作流文件或编辑diy-part文件来实现，即通过修改云编译工作流文件或编辑diy-part文件来把需要的插件源码git到工作流源码中就可以编译出这些插件了
+本固件基于成熟稳定的 Lean LEDE 源码进行极简定制，专为追求轻量、低内存占用及高网络性能的用户打造：
 
-**看README的时候请不要使用浏览器的网页翻译，会导致README的排版错误。**
+* **极致精简，纯净后台**：
+  * 物理剔除无用服务（彻底关闭 UPnP、vlmcsd KMS 激活服务、vsftpd FTP 服务器）。
+  * 移除左侧无用的“网络存储”大类菜单，保持侧边栏极度清爽。
+* **分流与核心组件稳定闭环**：
+  * **弃用规则容易崩溃的 PassWall 2，全面换回经典稳定版 PassWall (`luci-app-passwall`)**。
+  * 固件随包编译了完整的 `xray-core`、`sing-box`、`chinadns-ng`、`dns2socks` 及配套 Geodata 规则库，彻底解决手动安装提示“缺少依赖”或内核哈希（Vermagic）不匹配的问题。
+* **仅保留核心实用服务**：
+  * **宽带监控**（`luci-app-nlbwmon`：精确统计各设备上下行流量）
+  * **网络唤醒**（`luci-app-wol`：一键唤醒局域网主机/NAS）
+  * **定时自动重启**（`luci-app-autoreboot`：保障长期运行无冗余缓存）
+  * **科学分流**（经典版 `luci-app-passwall`）
+* **开箱即用**：
+  * 默认启用完整 **IPv6 支持** 及 **TurboACC 网络加速**（BBR 拥塞控制与流控加速）。
+  * 开机即内置 **Argon 现代主题**。
+  * 默认管理后台 IP 修改为 **`192.168.2.1`**，天然避开上级光猫的 `192.168.1.1` 地址冲突。
 
-**如果您使用的是发布在[Releases](https://github.com/zc360/Xiaomi-ax3000t-openwrt/releases)里的固件，且使用机型和我的机型一致那么应该是不会出现刷不上去和无法正常使用等奇奇怪怪的问题的**
+---
 
-**关于使用uboot刷入openwrt的说明：7月8日及之前版本的固件刷入时uboot选择第三项qwrt，8月4日及以后版本的固件刷入时uboot选择第二项，7月8日及以前的版本的固件升级8月4日及以后版本的固件时请先在`备份/升级`选项中备份配置文件，然后再到uboot里去升级，选择第二个选项，升级后再到`备份/升级`里恢复之前的配置文件。**
+## 二、 编译与工作流优化细节
 
-## 修改说明
+* **修复依赖与源冲突**：在 `diy-part1.sh` 中自动注入 xiaorouji 官方的 PassWall 及 Packages 依赖源，彻底剔除存在兼容性问题的 PassWall 2 源。
+* **物理防反弹清理**：在 `diy-part2.sh` 中物理删除 vsftpd、vlmcsd、upnp 等插件目录，阻止 LEDE 默认配置在生成 `.config` 时将其强行塞回固件。
+* **工作流维护更新**：
+  * 升级 GitHub Actions 至现代版本（`actions/checkout@v4` 与 `actions/upload-artifact@v4`）。
+  * 移除已废弃的 Node.js 20 旧插件，消除 Actions 编译日志中的弃用警告。
+  * 保留磁盘清理机制，彻底解决 GitHub 虚拟环境磁盘空间不足的问题。
 
-### 仓库里适用与小米ax3000t的config文件及[Releases](https://github.com/zc360/Xiaomi-ax3000t-openwrt/releases)里的固件相对lede默认ax3000t的配置而言修改的部分
+---
 
-1.添加ipv6支持
+## 三、 使用指南
 
-2.添加了Argon主题配置插件 `luci-app-argon-config`（2024/11/17及以后版本固件没有）
+### 方式一：直接使用 Releases 固件
+1. 前往本仓库的 **Releases** 页面下载最新构建的文件。
+2. 认准以 **`...-squashfs-sysupgrade.bin`** 结尾的文件。
+3. 路由器断电，按住 Reset 键插电 8~10 秒进入 U-Boot Web 恢复页面（`192.168.1.1`）。
+4. 上传该固件刷入，等待路由器自动重启。
+5. 刷写完成后，电脑改回自动获取 IP（DHCP），浏览器访问 **`192.168.2.1`** 即可进入后台。
 
-3.安装主题`Argon`（如果固件是7月8日及之前版本请手动到[Argon的GitHub仓库下载并安装](https://github.com/jerrykuku/luci-theme-argon/releases)）
+> **U-Boot 刷入特别提示**：  
+> 若使用的是 hanwckf 的多布局 U-Boot，原厂分区固件请根据固件对应选项选择（默认/Stock 选项）；如使用的是普通 LEDE 专属 U-Boot，直接上传 `squashfs-sysupgrade.bin` 即可。
 
-4.添加了`zram`内存压缩插件（如果固件是2024/7/8及之前的版本请手动到软件包里安装`zram-swap`插件才能正常运行）（2024/11/17-2025/08/12版本没有zram）
+### 方式二：Fork 仓库自行云编译
+1. Fork 本仓库到你自己的 GitHub 账号。
+2. 如需增删配置，可直接编辑仓库根目录下的 `.config`。
+3. 点击 **Actions** -> 选择 **Build OpenWrt for AX3000T** -> 点击 **Run workflow** 触发构建。
+4. 编译完成后在 Actions 运行详情底部的 **Artifacts** 处下载固件解压使用。
 
-5.删去了默认的Ddns，添加了[Ddns-go](https://github.com/sirpdboy/luci-app-ddns-go)（2024/8/4版本及以后有）
+---
 
-6.2025/08/12及之后版本没有ssrplus,使用passwall2
+## 四、 默认系统信息
 
-7.2025/08/12之前(不包括)版本使用ssrplus,没有passwall2
+| 项目 | 默认值 |
+| :--- | :--- |
+| **后台登录 IP** | `192.168.2.1` |
+| **登录用户名** | `root` |
+| **登录密码** | `password` |
+| **默认后台主题** | Argon |
 
-### 工作流文件修改（相较于原仓库）
+> **注意**：云编译时请勿勾选使用 SSH 连接功能，以免因超时挂起导致流水线构建失败！
 
-1.修复原版云编译 `set-output` 错误
+---
 
-2.删除工作流环境中无需的文件防止出现磁盘空间不足的问题
-
-3.添加了检测服务器配置的一步
-
-4.添加了Ddnsgo和新版Argon主题的源码
-
-5.根据lede最新的教程优化了工作流文件
-
-**编译完成后可能会报错出现红×，这并不影响，固件会正常编译出来**
-
-# 使用方法
-
-## 使用方法一（如果设备是小米ax3000t）
-
-直接到[Releases](https://github.com/zc360/Xiaomi-ax3000t-openwrt/releases)中下载已经编译好的固件，刷squashfs-sysupgrade格式的就可以，不行就先刷initramfs-kernel然后再到后台去升级为squashfs-sysupgrade格式的固件。
-
-## 使用方法二（不修改config文件的话编译的是ax3000t的固件）
-
-自己云编译
-
-<details>
-<summary><b>&nbsp;查看如何使用</b></summary>
-
-1：点击Use this template或fork这个仓库(推荐Use this template，fork在运行actions时可能有问题)
-
-2：到自己复制的仓库后的进入 `Actions`
-
-3：点击 `Build OpenWrt` 下的 `Run workflow` 即可开始编译
-
-4：等待编译完成后再次进入 `Actions` ，点击刚刚完成的一次编译
-
-5：点击编译完成的固件即可下载
-</details>
-
-## 修复配置文件（config文件）说明
-
-自定义固件配置，将config文件的内容复制到仓库里的config文件里
-
-生成config文件详细教程请到[lede的仓库查看](https://github.com/coolsnowwolf/lede)
-
-<details>
-<summary><b>&nbsp;查看如何生成config文件</b></summary>
-
-1. 首先装好 Linux 系统，推荐 Debian 11 或 Ubuntu LTS
-
-2. 安装编译依赖环境
-
-   ```bash
-   sudo apt update -y
-   sudo apt full-upgrade -y
-   sudo apt install -y ack antlr3 asciidoc autoconf automake autopoint binutils bison build-essential \
-   bzip2 ccache clang cmake cpio curl device-tree-compiler flex gawk gcc-multilib g++-multilib gettext \
-   genisoimage git gperf haveged help2man intltool libc6-dev-i386 libelf-dev libfuse-dev libglib2.0-dev \
-   libgmp3-dev libltdl-dev libmpc-dev libmpfr-dev libncurses5-dev libncursesw5-dev libpython3-dev \
-   libreadline-dev libssl-dev libtool llvm lrzsz libnsl-dev ninja-build p7zip p7zip-full patch pkgconf \
-   python3 python3-pyelftools python3-setuptools qemu-utils rsync scons squashfs-tools subversion \
-   swig texinfo uglifyjs upx-ucl unzip vim wget xmlto xxd zlib1g-dev
-   ```
-
-3. 下载源代码，更新 feeds 并安装到本地
-
-   ```bash
-   git clone https://github.com/coolsnowwolf/lede
-   cd lede
-   ./scripts/feeds update -a
-   ./scripts/feeds install -a
-   ```
-
-4. 命令行输入 `make menuconfig` 选择配置，选好配置后保存，文件名自定义为xxx.config（xxx是自定义的）
-
-   ```bash
-   make defconfig
-   ./scripts/diffconfig.sh > seed.config
-   ```
-
-5. 命令行输入 `cat xxx.config` 查看这个文件，也可以用文本编辑器打开
-
-6. 复制 xxx.config 文件内所有内容到 configs 目录对应文件中覆盖就可以了
-
-   **如果看不懂编译界面可以参考 YouTube 视频：[软路由固件 OpenWrt 编译界面设置](https://www.youtube.com/watch?v=jEE_J6-4E3Y&list=WL&index=7)**
-</details>
-
-
-# 其他重要部分
-
-1.默认的登录ip是 `192.168.2.1`
-
-2.默认登录密码是 `password`
-
-3.云编译的时候不能使用ssh，会导致编译失败！！！
-
-# [小米ax3000t解锁ssh以及刷入教程](https://github.com/zc360/Xiaomi-ax3000t-openwrt/blob/main/Flash-document.md)
-
-# [刷回小米官方固件](https://github.com/zc360/Xiaomi-ax3000t-openwrt/blob/main/BackXiaomi.md)
-
-# 感谢[P3TERX](https://github.com/P3TERX/Actions-OpenWrt)和[haiibo](https://github.com/haiibo/OpenWrt)以及[dzikaros](https://github.com/dzikaros/ActionsBuildOpenWRT)的源码提供支持
-
-
-
+## 致谢
+* [coolsnowwolf/lede](https://github.com/coolsnowwolf/lede)
+* [P3TERX/Actions-OpenWrt](https://github.com/P3TERX/Actions-OpenWrt)
+* [xiaorouji/openwrt-passwall](https://github.com/xiaorouji/openwrt-passwall)
+* [jerrykuku/luci-theme-argon](https://github.com/jerrykuku/luci-theme-argon)
