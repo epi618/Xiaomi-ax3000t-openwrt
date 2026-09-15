@@ -1,13 +1,21 @@
 name: Build OpenWrt for AX3000T
 
+# 关键：这行会让 Actions 运行列表的标题直接变成你的修改提交内容
+run-name: ${{ github.event.head_commit.message || format('手动触发: {0}', github.event.inputs.description || '编译 AX3000T') }}
+
 on:
-  repository_dispatch:
+  push:
+    paths:
+      - '.config'
+      - 'diy-part*.sh'
+      - '.github/workflows/**'
   workflow_dispatch:
     inputs:
-      ssh:
-        description: 'SSH 连接到 Actions'
+      description:
+        description: '本次编译说明 / 修改内容'
         required: false
-        default: 'false'
+        default: '常规精简构建'
+
 
 env:
   REPO_URL: https://github.com/coolsnowwolf/lede
