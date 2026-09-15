@@ -1,6 +1,6 @@
-name: Build OpenWrt for AX3000T
+name: Build ImmortalWrt for AX3000T (Ubootmod Large Partition)
 
-run-name: ${{ github.event.head_commit.message || github.event.inputs.description || '编译 AX3000T 固件' }}
+run-name: ${{ github.event.head_commit.message || '编译 AX3000T 大分区固件' }}
 
 on:
   push:
@@ -9,11 +9,6 @@ on:
       - 'diy-part*.sh'
       - '.github/workflows/**'
   workflow_dispatch:
-    inputs:
-      description:
-        description: '本次编译说明 / 修改内容'
-        required: false
-        default: '常规精简构建'
 
 env:
   REPO_URL: https://github.com/immortalwrt/immortalwrt
@@ -21,9 +16,6 @@ env:
   CONFIG_FILE: .config
   DIY_P1_SH: diy-part1.sh
   DIY_P2_SH: diy-part2.sh
-  UPLOAD_BIN_DIR: false
-  UPLOAD_FIRMWARE: true
-  UPLOAD_RELEASE: false
   TZ: Asia/Shanghai
 
 jobs:
@@ -45,7 +37,7 @@ jobs:
     - name: Checkout
       uses: actions/checkout@v4
 
-    - name: Initialization environment
+    - name: Initialize Environment
       env:
         DEBIAN_FRONTEND: noninteractive
       run: |
@@ -63,49 +55,37 @@ jobs:
         sudo timedatectl set-timezone "$TZ"
         sudo chown $USER:$GROUPS $GITHUB_WORKSPACE
 
-    - name: Clone source code
+    - name: Clone Source Code
       run: |
         git clone --depth=1 $REPO_URL -b $REPO_BRANCH openwrt
 
-    - name: Load custom feeds
+    - name: Load Custom Feeds (diy-part1)
       run: |
         chmod +x $DIY_P1_SH 2>/dev/null || true
         cd openwrt
         [ -f $GITHUB_WORKSPACE/$DIY_P1_SH ] && $GITHUB_WORKSPACE/$DIY_P1_SH
 
-    - name: Update feeds
+    - name: Update & Install Feeds
       run: |
         cd openwrt
         ./scripts/feeds update -a
-
-    - name: Install feeds
-      run: |
-        cd openwrt
         ./scripts/feeds install -a
 
-    - name: Install Argon theme
+    - name: Load Custom Configuration (diy-part2)
       run: |
-        cd openwrt/package
-        rm -rf luci-theme-argon
-        git clone -b master https://github.com/jerrykuku/luci-theme-argon.git luci-theme-argon
-
-    - name: Load custom configuration
-      run: |
-        [ -d files ] && mv files openwrt/files
-        [ -e $CONFIG_FILE ] && mv $CONFIG_FILE openwrt/.config
+        [ -e $CONFIG_FILE ] && cp $CONFIG_FILE openwrt/.config
         chmod +x $DIY_P2_SH 2>/dev/null || true
         cd openwrt
         [ -f $GITHUB_WORKSPACE/$DIY_P2_SH ] && $GITHUB_WORKSPACE/$DIY_P2_SH
 
-    - name: Download package
-      id: package
+    - name: Download Package Dependencies
       run: |
         cd openwrt
         make defconfig
         make download -j$(nproc) || make download -j1 V=s
         find dl -size -1024c -exec rm -f {} \;
 
-    - name: Compile the firmware
+    - name: Compile Firmware
       id: compile
       run: |
         cd openwrt
@@ -114,18 +94,20 @@ jobs:
         echo "status=success" >> $GITHUB_OUTPUT
         echo "FILE_DATE=_$(date +"%Y%m%d%H%M")" >> $GITHUB_ENV
 
-    - name: Organize files
-      id: organize
+    - name: Organize Artifacts
       if: steps.compile.outputs.status == 'success' && !cancelled()
       run: |
         cd openwrt/bin/targets/*/*
         rm -rf packages
-        echo "FIRMWARE=$PWD" >> $GITHUB_ENV
-        echo "status=success" >> $GITHUB_OUTPUT
+        # 提取关键刷机包到发布目录
+        mkdir -p $GITHUB_WORKSPACE/firmware_output
+        cp -f *sysupgrade.bin $GITHUB_WORKSPACE/firmware_output/ 2>/dev/null || true
+        cp -f *.bin $GITHUB_WORKSPACE/firmware_output/ 2>/dev/null || true
+        cp -f config.buildinfo $GITHUB_WORKSPACE/firmware_output/ 2>/dev/null || true
 
-    - name: Upload firmware directory
+    - name: Upload Firmware Directory
       uses: actions/upload-artifact@v4
-      if: steps.organize.outputs.status == 'success' && !cancelled()
+      if: steps.compile.outputs.status == 'success' && !cancelled()
       with:
-        name: OpenWrt_firmware_AX3000T${{ env.FILE_DATE }}
-        path: ${{ env.FIRMWARE }}
+        name: AX3000T-ImmortalWrt-Ubootmod${{ env.FILE_DATE }}
+        path: firmware_output/
