@@ -34,9 +34,19 @@ jobs:
         sudo -E apt-get -qq clean
         sudo timedatectl set-timezone "$TZ"
 
-    - name: 克隆 ImmortalWrt master 最新源码
+    - name: 克隆 ImmortalWrt 源码
       run: |
         git clone --depth 1 -b $REPO_BRANCH $REPO_URL openwrt
+
+    - name: 恢复编译缓存 (ccache & dl)
+      uses: actions/cache@v4
+      with:
+        path: |
+          openwrt/dl
+          openwrt/.ccache
+        key: ${{ runner.os }}-openwrt-cache-${{ hashFiles('.config') }}
+        restore-keys: |
+          ${{ runner.os }}-openwrt-cache-
 
     - name: 加载自定义 feeds (diy-part1)
       run: |
@@ -66,10 +76,10 @@ jobs:
         find dl -size -1024c -exec ls -l {} \;
         find dl -size -1024c -exec rm -f {} \;
 
-    - name: 开始编译固件
+    - name: 多线程编译固件
       run: |
         cd openwrt
-        echo -e "$(nproc) 线程并发编译..."
+        echo -e "$(nproc) 线程并发编译中..."
         make -j$(nproc) || make -j1 V=s
 
     - name: 整理打包固件
